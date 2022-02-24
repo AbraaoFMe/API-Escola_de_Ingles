@@ -1,9 +1,26 @@
-const database = require('../models')
+const Sequelize = require('sequelize')
+
+const { PessoasServices } = require('../services')
+const { MatriculasServices } = require('../services')
+
+const pessoasServices = new PessoasServices()
+const matriculasServices = new MatriculasServices()
 
 class PessoaController {
+    static async pegaTodasAsPessoasAtivas(req, res) {
+        try {
+            const todasAsPessoasAtivas = await pessoasServices.pegaRegistrosAtivos()
+
+            return res.status(200).json(todasAsPessoasAtivas)
+
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
     static async pegaTodasAsPessoas(req, res) {
         try {
-            const todasAsPessoas = await database.Pessoas.findAll()
+            const todasAsPessoas = await pessoasServices.pegaTodosOsRegistros()
 
             return res.status(200).json(todasAsPessoas)
 
@@ -16,11 +33,7 @@ class PessoaController {
         const { id } = req.params
 
         try {
-            const umaPessoa = await database.Pessoas.findOne({
-                where: {
-                    id: Number(id)
-                }
-            })
+            const umaPessoa = await pessoasServices.pegaUmRegistro(id)
 
             return res.status(200).json(umaPessoa)
         } catch (error) {
@@ -30,8 +43,9 @@ class PessoaController {
 
     static async criaPessoa(req, res) {
         const novaPessoa = req.body
+
         try {
-            const novaPessoaCriada = await database.Pessoas.create(novaPessoa)
+            const novaPessoaCriada = await pessoasServices.criaRegistro(novaPessoa)
 
             return res.status(201).json(novaPessoaCriada)
         } catch (error) {
@@ -44,22 +58,7 @@ class PessoaController {
         const { id } = req.params
 
         try {
-            await database.Pessoas.update(
-                novasInfos,
-                {
-                    where: {
-                        id: Number(id)
-                    }
-                }
-            )
-
-            const pessoaAtualizada = database.Pessoas.findOne(
-                {
-                    where: {
-                        id: Number(id)
-                    }
-                }
-            )
+            await pessoasServices.atualizaRegistro(novasInfos, Number(id))
 
             return res.status(204).end()
         } catch (error) {
@@ -71,13 +70,78 @@ class PessoaController {
         const { id } = req.params
 
         try {
-            await database.Pessoas.destroy({
-                where: {
-                    id: Number(id)
-                }
-            })
+            await pessoasServices.apagaPessoaEMatriculas(Number(id))
 
             return res.status(204).end()
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async restauraPessoa(req, res) {
+        const { id } = req.params
+
+        try {
+            await pessoasServices.restauraPessoaEMatriculas(Number(id))
+
+            return res.status(200).json({ mensagem: `id ${id} restaurado` })
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async cancelaPessoa(req, res) {
+        const { estudanteId } = req.params
+
+        try {
+            await pessoasServices.cancelaPessoaEMatriculas(Number(estudanteId))
+
+            return res.status(200).json({ mensagem: `matrículas ref. ${estudanteId} canceladas` })
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async pegaTodasAsMatriculasAtivas(req, res) {
+        const { estudanteId } = req.params
+
+        try {
+            const matriculasAtivas = await pessoasServices.pegaPessoaMatriculasAtivas(estudanteId)
+
+            return res.status(200).json(matriculasAtivas)
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async pegaMatriculasPorTurma(req, res) {
+        const { turmaId } = req.params
+
+        try {
+            const todasAsMatriculas = await matriculasServices.pegaRegistrosPorTurma(turmaId)
+
+            return res.status(200).json(todasAsMatriculas)
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async pegaTurmasLotadas(req, res) {
+        const { turmaId } = req.params
+        const lotacaoTurma = 2
+
+        try {
+            const turmasLotadas = await matriculasServices.pegaEContaRegistros(
+                {
+                    status: 'confirmado'
+                },
+                {
+                    attributes: ['turma_id'],
+                    group: ['turma_id'],
+                    having: Sequelize.literal(`count(turma_id) >= ${lotacaoTurma}`)
+                })
+
+            return res.status(200).json(turmasLotadas.count)
         } catch (error) {
             return res.status(500).json(error.message)
         }
@@ -87,12 +151,7 @@ class PessoaController {
         const { estudanteId, matriculaId } = req.params
 
         try {
-            const umaMatricula = await database.Matriculas.findOne({
-                where: {
-                    id: Number(matriculaId),
-                    estudante_id: Number(estudanteId)
-                }
-            })
+            const umaMatricula = await matriculasServices.pegaUmRegistro(estudanteId, matriculaId)
 
             return res.status(200).json(umaMatricula)
         } catch (error) {
@@ -105,7 +164,7 @@ class PessoaController {
         const novaMatricula = { ...req.body, estudante_id: Number(estudanteId) }
 
         try {
-            const novaMatriculaCriada = await database.Matriculas.create(novaMatricula)
+            const novaMatriculaCriada = await matriculasServices.criaRegistro(novaMatricula)
 
             return res.status(201).json(novaMatriculaCriada)
         } catch (error) {
@@ -118,15 +177,7 @@ class PessoaController {
         const { estudanteId, matriculaId } = req.params
 
         try {
-            await database.Matriculas.update(
-                novasInfos,
-                {
-                    where: {
-                        estudante_id: Number(estudanteId),
-                        id: Number(matriculaId)
-                    }
-                }
-            )
+            await matriculasServices.atualizaRegistro(novasInfos, estudanteId, matriculaId)
 
             return res.status(204).end()
         } catch (error) {
@@ -138,14 +189,21 @@ class PessoaController {
         const { estudanteId, matriculaId } = req.params
 
         try {
-            await database.Matriculas.destroy({
-                where: {
-                    id: Number(matriculaId),
-                    estudante_id: Number(estudanteId)
-                }
-            })
+            await matriculasServices.apagaRegistro(estudanteId, matriculaId)
 
             return res.status(204).end()
+        } catch (error) {
+            return res.status(500).json(error.message)
+        }
+    }
+
+    static async restauraMatricula(req, res) {
+        const { estudanteId, matriculaId } = req.params
+
+        try {
+            await matriculasServices.restauraRegistro(estudanteId, matriculaId)
+
+            return res.status(200).json({ mensagem: `id ${matriculaId} restaurado` })
         } catch (error) {
             return res.status(500).json(error.message)
         }
